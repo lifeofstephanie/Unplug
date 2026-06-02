@@ -2,7 +2,8 @@ import axios from "axios";
 
 // Determine API base URL
 // During development, standard Next.js proxying can be used, or we point directly to the backend port.
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || "https://unplug-awa8.onrender.com/api";
 
 export const api = axios.create({
   baseURL: API_URL,
@@ -41,7 +42,7 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => Promise.reject(error),
 );
 
 // Response Interceptor: Handle 401s & Refresh Tokens
@@ -112,5 +113,5 @@ api.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  }
+  },
 );

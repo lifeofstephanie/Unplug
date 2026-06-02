@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // ── Base URL ─────────────────────────────────────────
 // Change this to your deployed backend URL when you go live
-export const BASE_URL = "http://192.168.0.121:5000/api";
+export const BASE_URL = "https://unplug-awa8.onrender.com/api";
 // For Android emulator use: http://10.0.2.2:5000/api
 // For iOS simulator use:    http://localhost:5000/api
 
