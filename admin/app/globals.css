@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-900: #1b3d73;
+  --color-brand-800: #244b8b;
+  --color-brand-700: #2C5EAD; /* Primary Dark Blue */
+  --color-brand-600: #1a7ab8;
+  --color-brand-500: #1591DC; /* Secondary Blue */
+  --color-brand-400: #33a5f2;
+  --color-brand-300: #4BB8FA; /* Light Blue / Accent */
+  --color-brand-200: #88cffc;
+  --color-brand-100: #C4E2F5; /* Very Light Blue / Surface */
+  --color-brand-50:  #e6f4fc;
+
+  /* We map standard primary to brand-700 */
+  --color-primary: var(--color-brand-700);
+  --color-primary-hover: var(--color-brand-800);
+  
+  --font-sans: "Inter", var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+}
+
+/* Base resets & utilities */
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #090e17; /* Very dark blue-tinted background */
+    --foreground: #f8fafc;
+  }
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Glassmorphism utility classes */
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+@media (prefers-color-scheme: dark) {
+  .glass {
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* Custom Scrollbar for sleekness */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-brand-200);
+  border-radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-brand-800);
+  }
+}
