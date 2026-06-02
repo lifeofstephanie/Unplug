@@ -184,7 +184,7 @@ export const resetUserPassword = async (req: Request, res: Response): Promise<vo
   await user.save(); // pre-save hook hashes it
 
   // Revoke all refresh tokens — forces user to log in again
-  const { revokeAllTokens } = await import("../utils/tokens");
+  const { revokeAllTokens } = await import("../utils/tokens.js");
   await revokeAllTokens(user._id.toString());
 
   res.json({ message: `Password reset for ${user.name} (${user.email}).` });
