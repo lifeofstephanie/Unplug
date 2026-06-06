@@ -7,7 +7,11 @@ import Course from "../models/course";
 export interface SyncEvent {
   courseId: string;
   lessonId: string;
-  eventType: "lesson_started" | "lesson_completed" | "quiz_answered" | "course_completed";
+  eventType:
+    | "lesson_started"
+    | "lesson_completed"
+    | "quiz_answered"
+    | "course_completed";
   payload?: {
     score?: number | null;
     passed?: boolean | null;
@@ -19,9 +23,9 @@ export interface SyncEvent {
 }
 
 export interface SyncResult {
-  accepted: string[];   // idempotency keys that were saved
+  accepted: string[]; // idempotency keys that were saved
   duplicates: string[]; // idempotency keys that already existed
-  errors: string[];     // idempotency keys that had errors
+  errors: string[]; // idempotency keys that had errors
 }
 
 interface BadgeDefinition {
@@ -171,31 +175,71 @@ export const processSyncBatch = async (
   return result;
 };
 
-// ── Recompute XP and award badges ───────────────────
 export const computeXpAndBadges = async (userId: string): Promise<void> => {
-  // Sum all xpEarned from unique lesson completions
-  const xpAgg = await ProgressEvent.aggregate([
-    { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-    {
-      $group: {
-        _id: null,
-        totalXp: { $sum: "$xpEarned" },
-      },
-    },
-  ]);
+  const uid = new mongoose.Types.ObjectId(userId);
 
+  // 1. Calculate Total XP
+  const xpAgg = await ProgressEvent.aggregate([
+    { $match: { userId: uid } },
+    { $group: { _id: null, totalXp: { $sum: "$xpEarned" } } },
+  ]);
   const totalXp = xpAgg.length > 0 ? xpAgg[0].totalXp : 0;
 
-  // Count stats for badge checks
+  // 2. Calculate Offline-Proof Streak
+  const uniqueDays = await ProgressEvent.aggregate([
+    { $match: { userId: uid, eventType: "lesson_completed" } },
+    {
+      $group: {
+        // Group by the literal calendar day the user was active
+        _id: {
+          $dateToString: { format: "%Y-%m-%d", date: "$clientTimestamp" },
+        },
+      },
+    },
+    { $sort: { _id: -1 } }, // Sort newest to oldest
+  ]);
+
+  let currentStreak = 0;
+  let lastActivityDate = null;
+
+  if (uniqueDays.length > 0) {
+    const dates = uniqueDays.map((d) => new Date(d._id));
+    lastActivityDate = dates[0];
+
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0); // Normalize today to midnight
+
+    let expectedDate = dates[0];
+    const daysSinceLastActivity =
+      (today.getTime() - expectedDate.getTime()) / (1000 * 3600 * 24);
+
+    // If last activity was today or yesterday, they have a streak. Otherwise, it's 0.
+    if (daysSinceLastActivity <= 1) {
+      for (const d of dates) {
+        if (d.getTime() === expectedDate.getTime()) {
+          currentStreak++;
+          expectedDate.setDate(expectedDate.getDate() - 1); // Move expected target back 1 day
+        } else {
+          break; // Gap found, streak broken
+        }
+      }
+    }
+  }
+
+  // 3. Check for Badges (Keep your existing badge logic here)
   const stats = await getStatsForUser(userId);
   stats.totalXp = totalXp;
 
-  // Check which badges should be awarded
   const user = await User.findById(userId);
   if (!user) return;
 
   const existingBadgeIds = new Set(user.badges.map((b) => b.id));
-  const newBadges: { id: string; name: string; emoji: string; earnedAt: Date }[] = [];
+  const newBadges: {
+    id: string;
+    name: string;
+    emoji: string;
+    earnedAt: Date;
+  }[] = [];
 
   for (const badge of BADGE_DEFINITIONS) {
     if (!existingBadgeIds.has(badge.id) && badge.check(stats)) {
@@ -208,9 +252,11 @@ export const computeXpAndBadges = async (userId: string): Promise<void> => {
     }
   }
 
-  // Update user
+  // 4. Save Everything to the User!
   await User.findByIdAndUpdate(userId, {
     xp: totalXp,
+    streak: currentStreak, // 🔥 Added our calculated streak
+    lastActiveAt: lastActivityDate, // 🔥 Added our last active date
     lastSyncedAt: new Date(),
     ...(newBadges.length > 0 && {
       $push: { badges: { $each: newBadges } },
@@ -295,9 +341,7 @@ export const getUserProgress = async (
         totalLessons: course?.totalLessons || 0,
         quizzesTaken: p.quizzesTaken,
         averageScore:
-          p.quizzesTaken > 0
-            ? Math.round(p.totalScore / p.quizzesTaken)
-            : 0,
+          p.quizzesTaken > 0 ? Math.round(p.totalScore / p.quizzesTaken) : 0,
         xpEarned: p.xpEarned,
         completedAt: p.completedAt,
       };
@@ -310,7 +354,9 @@ export const getUserProgress = async (
 // ── Leaderboard ─────────────────────────────────────
 export const getLeaderboard = async (
   limit: number = 20,
-): Promise<Array<{ userId: string; name: string; xp: number; badges: number }>> => {
+): Promise<
+  Array<{ userId: string; name: string; xp: number; badges: number }>
+> => {
   const users = await User.find({ isActive: true })
     .sort({ xp: -1 })
     .limit(limit)
