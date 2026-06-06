@@ -96,7 +96,6 @@ export default function LoginScreen() {
     }
   };
 
-  // ── Login ───────────────────────────────────────────
   const handleLogin = async () => {
     if (!validate()) return;
     setLoading(true);
@@ -107,6 +106,15 @@ export default function LoginScreen() {
       });
       const { user, accessToken, refreshToken } = res.data;
       await saveSession(user, accessToken, refreshToken);
+      useStore.setState({
+        totalXp: user.xp || 0,
+        streak: user.streak || 0,
+        lastActivityDate: user.lastActiveAt
+          ? new Date(user.lastActiveAt).toISOString().split("T")[0]
+          : null,
+        eventQueue: [],
+      });
+      await useStore.getState().persist();
       router.replace("/(tabs)");
     } catch (err: any) {
       const message =

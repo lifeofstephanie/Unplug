@@ -1,3 +1,4 @@
+import NetInfo from "@react-native-community/netinfo";
 import React, { useRef, useEffect, useState } from "react";
 import {
   View,
@@ -12,11 +13,13 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useStore } from "@/store";
 import { Colors, Spacing, Radius, Shadow } from "@/constants/theme";
-import { MOCK_COURSES } from "@/constants/mockData";
 import { useRouter } from "expo-router";
+import { progressApi } from "@/services/api"; // Added the progress API
 
 export default function ProfileScreen() {
+  const [syncing, setSyncing] = useState(false); // Added syncing state
   const insets = useSafeAreaInsets();
+
   const user = useStore((s) => s.user);
   const totalXp = useStore((s) => s.totalXp);
   const streak = useStore((s) => s.streak);
@@ -26,9 +29,67 @@ export default function ProfileScreen() {
   const isOnline = useStore((s) => s.isOnline);
   const clearAuth = useStore((s) => s.clearAuth);
   const persist = useStore((s) => s.persist);
+  const clearQueue = useStore((s) => s.clearQueue); // Added clearQueue extractor
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
+
+  // ── Network & Sync Handlers ──────────────────────────────────────────
+
+  const handleCheckConnection = async () => {
+    const state = await NetInfo.fetch();
+    const online =
+      state.isConnected === true && state.isInternetReachable !== false;
+
+    useStore.getState().setOnline(online);
+
+    Alert.alert("Connection Status", online ? "Online ✅" : "Offline ❌");
+  };
+
+  const handleManualSync = async () => {
+    try {
+      setSyncing(true);
+
+      const state = await NetInfo.fetch();
+      const online =
+        state.isConnected === true && state.isInternetReachable !== false;
+
+      useStore.getState().setOnline(online);
+
+      if (!online) {
+        Alert.alert("Offline", "No internet connection available.");
+        return;
+      }
+
+      const eventsToSync = useStore.getState().eventQueue;
+
+      if (eventsToSync.length === 0) {
+        Alert.alert("Up to date", "All progress is already synced!");
+        return;
+      }
+
+      console.log("Syncing events:", JSON.stringify(eventsToSync, null, 2));
+
+      // Push to backend
+      await progressApi.sync(eventsToSync);
+
+      // On success, clear the local queue and save
+      clearQueue();
+      await persist();
+
+      Alert.alert("Success", "Progress synced successfully.");
+    } catch (error: any) {
+      console.log("Sync failed:", error?.response?.data || error?.message);
+      Alert.alert(
+        "Sync Failed",
+        error?.response?.data?.error || "Unable to sync progress.",
+      );
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // ── Initial Animations ──────────────────────────────────────────────
 
   useEffect(() => {
     Animated.parallel([
@@ -184,13 +245,34 @@ export default function ProfileScreen() {
             </View>
             <Text style={styles.syncBody}>
               {pendingSync > 0
-                ? `${pendingSync} event${pendingSync > 1 ? "s" : ""} waiting to sync`
+                ? `${pendingSync} event${
+                    pendingSync > 1 ? "s" : ""
+                  } waiting to sync`
                 : "All progress synced ✓"}
             </Text>
             {!isOnline && pendingSync > 0 && (
               <Text style={styles.syncHint}>
                 Events will sync automatically when you reconnect.
               </Text>
+            )}
+
+            <TouchableOpacity
+              style={styles.syncButton}
+              onPress={handleCheckConnection}
+            >
+              <Text style={styles.syncButtonText}>Check Connection</Text>
+            </TouchableOpacity>
+
+            {pendingSync > 0 && (
+              <TouchableOpacity
+                style={[styles.syncButton, syncing && { opacity: 0.7 }]}
+                onPress={handleManualSync}
+                disabled={syncing}
+              >
+                <Text style={styles.syncButtonText}>
+                  {syncing ? "Syncing..." : "Sync Now"}
+                </Text>
+              </TouchableOpacity>
             )}
           </View>
 
@@ -492,6 +574,17 @@ const styles = StyleSheet.create({
     color: Colors.textLight,
     marginTop: 4,
     fontStyle: "italic",
+  },
+  syncButton: {
+    marginTop: 10,
+    backgroundColor: Colors.blue,
+    paddingVertical: 10,
+    borderRadius: Radius.md,
+    alignItems: "center",
+  },
+  syncButtonText: {
+    color: Colors.white,
+    fontWeight: "700",
   },
   sectionTitle: {
     fontSize: 16,

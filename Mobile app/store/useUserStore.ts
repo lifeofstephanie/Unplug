@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Crypto from "expo-crypto";
 
 const STORAGE_KEY = "@komuniti_store";
 
@@ -86,7 +87,18 @@ export const useStore = create<StoreState>((set, get) => ({
   setAuth: (user, accessToken, refreshToken) =>
     set({ user, accessToken, refreshToken }),
 
-  clearAuth: () => set({ user: null, accessToken: null, refreshToken: null }),
+  // 🔥 UPDATED: Now performs a full factory reset of local progress data
+  clearAuth: () =>
+    set({
+      user: null,
+      accessToken: null,
+      refreshToken: null,
+      totalXp: 0,
+      streak: 0,
+      lastActivityDate: null,
+      lessonProgress: {},
+      eventQueue: [],
+    }),
 
   // ── Courses ───────────────────────────────────────────
   courses: [],
@@ -106,15 +118,15 @@ export const useStore = create<StoreState>((set, get) => ({
   markLessonComplete: (lessonId, score = 100) =>
     set((s) => {
       const now = new Date();
-      const todayString = now.toISOString().split('T')[0];
-      
+      const todayString = now.toISOString().split("T")[0];
+
       let newStreak = s.streak;
       let newLastActivityDate = s.lastActivityDate;
 
       if (s.lastActivityDate) {
         const yesterday = new Date();
         yesterday.setDate(now.getDate() - 1);
-        const yesterdayString = yesterday.toISOString().split('T')[0];
+        const yesterdayString = yesterday.toISOString().split("T")[0];
 
         if (s.lastActivityDate === yesterdayString) {
           // Completed yesterday, so streak continues!
@@ -127,7 +139,7 @@ export const useStore = create<StoreState>((set, get) => ({
         // First lesson ever!
         newStreak = 1;
       }
-      
+
       newLastActivityDate = todayString;
 
       return {
@@ -152,15 +164,17 @@ export const useStore = create<StoreState>((set, get) => ({
     const store = get();
     const bundle = store.downloadedCourses[courseId];
     if (!bundle) return { completed: 0, total: 0, percent: 0 };
-    
+
     // Aggressively search for lessons array
-    const courseObj = bundle.course || bundle.data?.course || bundle.data || bundle;
-    const lessons = courseObj.lessons || bundle.lessons || bundle.data?.lessons || [];
+    const courseObj =
+      bundle.course || bundle.data?.course || bundle.data || bundle;
+    const lessons =
+      courseObj.lessons || bundle.lessons || bundle.data?.lessons || [];
 
     const completed = lessons.filter(
       (l: any) => store.lessonProgress[l._id]?.completed,
     ).length;
-    
+
     return {
       completed,
       total: lessons.length,
@@ -186,7 +200,7 @@ export const useStore = create<StoreState>((set, get) => ({
         ...s.eventQueue,
         {
           ...event,
-          idempotencyKey: `${event.lessonId}_${event.eventType}_${Date.now()}`,
+          idempotencyKey: Crypto.randomUUID(),
           clientTimestamp: new Date().toISOString(),
         },
       ],
