@@ -28,10 +28,20 @@ const getClient = (): Groq => {
 };
 
 const cleanJson = (text: string): string => {
-  return text
+  // Remove markdown fences
+  let cleaned = text
     .replace(/```json\n?/g, "")
     .replace(/```\n?/g, "")
     .trim();
+
+  // Extract just the JSON object if Groq added surrounding text
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1) {
+    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+  }
+
+  return cleaned;
 };
 
 export const generateQuestions = async (
@@ -42,27 +52,30 @@ export const generateQuestions = async (
   const client = getClient();
 
   const response = await client.chat.completions.create({
-    model: "llama-3.1-8b-instant",
-    max_tokens: 2048,
+    model: "llama-3.3-70b-versatile",
+    max_tokens: 4096,
     messages: [
       {
+        role: "system",
+        content:
+          "You are a JSON API. You only respond with valid JSON. No markdown, no explanations, no preamble. Just raw JSON.",
+      },
+      {
         role: "user",
-        content: `You are an educational content creator for Unplug, a community learning platform serving learners in underserved communities.
-
-Given the following lesson content, generate ${count} multiple choice questions.
+        content: `Generate ${count} multiple choice questions for this lesson content at ${level} level.
 
 Rules:
 - Questions must be answerable from the lesson text only
-- Use simple, clear language appropriate for ${level} level
+- Use simple, clear language
 - Each question must have exactly 4 options
 - Only one option is correct
 - Explanations must reference the lesson content
-- Avoid trick questions — test understanding, not memory
+- Avoid trick questions
 
 Lesson content:
 ${lessonContent}
 
-Return ONLY valid JSON in this exact structure, no preamble, no markdown fences:
+Respond with this exact JSON structure and nothing else:
 {
   "questions": [
     {
@@ -77,12 +90,17 @@ Return ONLY valid JSON in this exact structure, no preamble, no markdown fences:
     ],
   });
 
-  const text = cleanJson(response.choices[0]?.message?.content || "");
+  const raw = response.choices[0]?.message?.content || "";
+  console.log("Groq raw response (questions):", raw.slice(0, 300));
+
+  const text = cleanJson(raw);
 
   let parsed: { questions: GeneratedQuestion[] };
   try {
     parsed = JSON.parse(text);
   } catch {
+    console.error("Failed to parse JSON. Raw:", raw);
+    console.error("Cleaned:", text);
     throw new Error("AI returned invalid JSON. Please try again.");
   }
 
@@ -92,7 +110,6 @@ Return ONLY valid JSON in this exact structure, no preamble, no markdown fences:
 
   return parsed.questions
     .filter((q: GeneratedQuestion) => {
-      // Drop any question that doesn't have exactly 4 options
       if (!Array.isArray(q.options) || q.options.length < 4) return false;
       if (!q.question) return false;
       if (q.correctIndex === undefined || q.correctIndex === null) return false;
@@ -114,24 +131,27 @@ export const generateCourseOutline = async (
   const client = getClient();
 
   const response = await client.chat.completions.create({
-    model: "llama-3.1-8b-instant",
+    model: "llama-3.3-70b-versatile",
     max_tokens: 4096,
     messages: [
       {
+        role: "system",
+        content:
+          "You are a JSON API. You only respond with valid JSON. No markdown, no explanations, no preamble. Just raw JSON.",
+      },
+      {
         role: "user",
-        content: `You are an educational content architect for Unplug, a community learning platform for underserved communities.
-
-Create a complete course outline for the topic "${topic}" in the subject area "${subject}" at the ${level} level.
+        content: `Create a complete course outline for the topic "${topic}" in the subject area "${subject}" at the ${level} level.
 
 Requirements:
 - 5 to 10 lessons in logical learning order
-- Each lesson should cover one key concept
+- Each lesson covers one key concept
 - Include 2-3 key concepts per lesson
-- Suggest 2-3 quiz questions per lesson (just the question text)
+- Suggest 2-3 quiz questions per lesson
 - Estimate duration per lesson (5-15 minutes)
 - Use simple, accessible language
 
-Return ONLY valid JSON in this exact structure, no preamble, no markdown fences:
+Respond with this exact JSON structure and nothing else:
 {
   "title": "Course Title",
   "description": "2-3 sentence course description",
@@ -148,12 +168,17 @@ Return ONLY valid JSON in this exact structure, no preamble, no markdown fences:
     ],
   });
 
-  const text = cleanJson(response.choices[0]?.message?.content || "");
+  const raw = response.choices[0]?.message?.content || "";
+  console.log("Groq raw response (outline):", raw.slice(0, 300));
+
+  const text = cleanJson(raw);
 
   let parsed: CourseOutline;
   try {
     parsed = JSON.parse(text);
   } catch {
+    console.error("Failed to parse JSON. Raw:", raw);
+    console.error("Cleaned:", text);
     throw new Error("AI returned invalid JSON. Please try again.");
   }
 
